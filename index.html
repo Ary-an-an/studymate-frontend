@@ -893,331 +893,387 @@
   </div>
 
   <script>
-    const BACKEND_URL = "https://studymate-backend-7bkx.onrender.com/chat";
+  const BACKEND_URL = "https://studymate-backend-7bkx.onrender.com/chat";
 
-    const chatScrollEl = document.getElementById("chat-scroll");
-    const chatEmptyEl = document.getElementById("chat-empty");
-    const inputEl = document.getElementById("input");
-    const sendBtn = document.getElementById("send-btn");
-    const clearBtn = document.getElementById("clear-btn");
-    const typingRow = document.getElementById("typing-row");
-    const statusDot = document.getElementById("status-dot");
-    const statusLabel = document.getElementById("status-label");
-    const fileInput = document.getElementById("file-input");
-    const fileLabel = document.getElementById("file-label");
-    const newChatBtn = document.getElementById("new-chat-btn");
-    const historyListEl = document.getElementById("history-list");
-    const historyEmptyEl = document.getElementById("history-empty");
-    const statMessagesEl = document.getElementById("stat-messages");
-    const statChatsEl = document.getElementById("stat-chats");
-    const quickPromptsEl = document.getElementById("quick-prompts");
+  const chatScrollEl = document.getElementById("chat-scroll");
+  const chatEmptyEl = document.getElementById("chat-empty");
+  const inputEl = document.getElementById("input");
+  const sendBtn = document.getElementById("send-btn");
+  const clearBtn = document.getElementById("clear-btn");
+  const typingRow = document.getElementById("typing-row");
+  const statusDot = document.getElementById("status-dot");
+  const statusLabel = document.getElementById("status-label");
+  const fileInput = document.getElementById("file-input");
+  const fileLabel = document.getElementById("file-label");
+  const newChatBtn = document.getElementById("new-chat-btn");
+  const historyListEl = document.getElementById("history-list");
+  const historyEmptyEl = document.getElementById("history-empty");
+  const statMessagesEl = document.getElementById("stat-messages");
+  const statChatsEl = document.getElementById("stat-chats");
+  const quickPromptsEl = document.getElementById("quick-prompts");
 
-    let currentMessages = [];
-    let chatHistory = [];
-    let currentChatId = null;
-    let messageCount = 0;
+  let currentMessages = [];
+  let chatHistory = [];
+  let currentChatId = null;
+  let messageCount = 0;
 
-    function updateStats() {
-      statMessagesEl.textContent = messageCount.toString();
-      statChatsEl.textContent = chatHistory.length.toString();
+  function updateStats() {
+    statMessagesEl.textContent = messageCount.toString();
+    statChatsEl.textContent = chatHistory.length.toString();
+  }
+
+  function ensureChatId() {
+    if (!currentChatId) {
+      currentChatId = "chat-" + Date.now();
+      chatHistory.unshift({
+        id: currentChatId,
+        title: "New chat",
+        createdAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+        messages: []
+      });
+      renderHistory();
+    }
+  }
+
+  function setStatus(online) {
+    if (online) {
+      statusDot.style.background = "#22c55e";
+      statusDot.style.boxShadow = "0 0 12px rgba(34, 197, 94, 0.9)";
+      statusLabel.textContent = "Connected";
+    } else {
+      statusDot.style.background = "#f97373";
+      statusDot.style.boxShadow = "0 0 12px rgba(248, 113, 113, 0.9)";
+      statusLabel.textContent = "Offline";
+    }
+  }
+
+  function clearChatUI() {
+    chatScrollEl.innerHTML = "";
+    chatScrollEl.appendChild(chatEmptyEl);
+    chatEmptyEl.style.display = "flex";
+    currentMessages = [];
+    currentChatId = null;
+  }
+
+  /* ---------- base message bubble (no typing) ---------- */
+
+  function addMessage(role, text) {
+    if (chatEmptyEl.parentElement === chatScrollEl) {
+      chatEmptyEl.style.display = "none";
+      chatScrollEl.removeChild(chatEmptyEl);
     }
 
-    function ensureChatId() {
-      if (!currentChatId) {
-        currentChatId = "chat-" + Date.now();
-        chatHistory.unshift({
-          id: currentChatId,
-          title: "New chat",
-          createdAt: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          messages: []
-        });
-        renderHistory();
+    const row = document.createElement("div");
+    row.className = "msg-row " + role;
+
+    const bubble = document.createElement("div");
+    bubble.className = "msg-bubble " + role;
+    bubble.textContent = text;
+
+    const meta = document.createElement("div");
+    meta.className = "msg-meta";
+    meta.textContent = role === "user" ? "You" : "StudyMate";
+
+    bubble.appendChild(meta);
+    row.appendChild(bubble);
+    chatScrollEl.appendChild(row);
+    chatScrollEl.scrollTop = chatScrollEl.scrollHeight;
+
+    currentMessages.push({ role, content: text });
+    messageCount++;
+    updateStats();
+
+    ensureChatId();
+    const chat = chatHistory.find(c => c.id === currentChatId);
+    if (chat) {
+      chat.messages = [...currentMessages];
+      if (chat.title === "New chat" && role === "user") {
+        chat.title = text.slice(0, 40) + (text.length > 40 ? "…" : "");
+      }
+    }
+    renderHistory();
+  }
+
+  /* ---------- AI typing bubble (matches UI) ---------- */
+
+  function typeWriterEffect(element, text, speed = 15) {
+    let index = 0;
+
+    function type() {
+      if (index < text.length) {
+        element.textContent += text.charAt(index);
+        index++;
+        setTimeout(type, speed);
       }
     }
 
-    function setStatus(online) {
-      if (online) {
-        statusDot.style.background = "#22c55e";
-        statusDot.style.boxShadow = "0 0 12px rgba(34, 197, 94, 0.9)";
-        statusLabel.textContent = "Connected";
-      } else {
-        statusDot.style.background = "#f97373";
-        statusDot.style.boxShadow = "0 0 12px rgba(248, 113, 113, 0.9)";
-        statusLabel.textContent = "Offline";
-      }
+    type();
+  }
+
+  function addTypingMessage(text) {
+    if (chatEmptyEl.parentElement === chatScrollEl) {
+      chatEmptyEl.style.display = "none";
+      chatScrollEl.removeChild(chatEmptyEl);
     }
 
-    function clearChatUI() {
-      chatScrollEl.innerHTML = "";
+    const row = document.createElement("div");
+    row.className = "msg-row ai";
+
+    const bubble = document.createElement("div");
+    bubble.className = "msg-bubble ai";
+
+    const textSpan = document.createElement("span");
+    textSpan.className = "msg-text";
+    textSpan.textContent = "";
+
+    const meta = document.createElement("div");
+    meta.className = "msg-meta";
+    meta.textContent = "StudyMate";
+
+    bubble.appendChild(textSpan);
+    bubble.appendChild(meta);
+    row.appendChild(bubble);
+    chatScrollEl.appendChild(row);
+
+    typeWriterEffect(textSpan, text, 15);
+
+    chatScrollEl.scrollTop = chatScrollEl.scrollHeight;
+
+    currentMessages.push({ role: "ai", content: text });
+    messageCount++;
+    updateStats();
+
+    ensureChatId();
+    const chat = chatHistory.find(c => c.id === currentChatId);
+    if (chat) {
+      chat.messages = [...currentMessages];
+    }
+  }
+
+  /* ---------- history ---------- */
+
+  function renderHistory() {
+    historyListEl.innerHTML = "";
+    if (!chatHistory.length) {
+      historyListEl.appendChild(historyEmptyEl);
+      historyEmptyEl.style.display = "block";
+      return;
+    }
+    historyEmptyEl.style.display = "none";
+
+    chatHistory.forEach(chat => {
+      const item = document.createElement("div");
+      item.className = "history-item";
+      item.dataset.id = chat.id;
+
+      const title = document.createElement("div");
+      title.className = "history-item-title";
+      title.textContent = chat.title || "Untitled chat";
+
+      const meta = document.createElement("div");
+      meta.className = "history-item-meta";
+      const timeSpan = document.createElement("span");
+      timeSpan.textContent = chat.createdAt || "";
+      const countSpan = document.createElement("span");
+      countSpan.textContent = (chat.messages?.length || 0) + " msgs";
+
+      meta.appendChild(timeSpan);
+      meta.appendChild(countSpan);
+
+      item.appendChild(title);
+      item.appendChild(meta);
+
+      item.addEventListener("click", () => {
+        loadChat(chat.id);
+      });
+
+      historyListEl.appendChild(item);
+    });
+  }
+
+  function loadChat(id) {
+    const chat = chatHistory.find(c => c.id === id);
+    if (!chat) return;
+
+    currentChatId = chat.id;
+    currentMessages = [...(chat.messages || [])];
+
+    chatScrollEl.innerHTML = "";
+    if (!currentMessages.length) {
       chatScrollEl.appendChild(chatEmptyEl);
       chatEmptyEl.style.display = "flex";
-      currentMessages = [];
-      currentChatId = null;
+      return;
     }
 
-    function addMessage(role, text, options = {}) {
-      if (chatEmptyEl.parentElement === chatScrollEl) {
-        chatEmptyEl.style.display = "none";
-        chatScrollEl.removeChild(chatEmptyEl);
-      }
-
+    currentMessages.forEach(msg => {
       const row = document.createElement("div");
-      row.className = "msg-row " + role;
+      row.className = "msg-row " + msg.role;
 
       const bubble = document.createElement("div");
-      bubble.className = "msg-bubble " + role;
-      bubble.textContent = text;
+      bubble.className = "msg-bubble " + msg.role;
+      bubble.textContent = msg.content;
 
       const meta = document.createElement("div");
       meta.className = "msg-meta";
-      meta.textContent = options.meta || (role === "user" ? "You" : "StudyMate");
+      meta.textContent = msg.role === "user" ? "You" : "StudyMate";
 
       bubble.appendChild(meta);
       row.appendChild(bubble);
       chatScrollEl.appendChild(row);
-      chatScrollEl.scrollTop = chatScrollEl.scrollHeight;
+    });
 
-      currentMessages.push({ role, content: text });
-      messageCount++;
-      updateStats();
+    chatScrollEl.scrollTop = chatScrollEl.scrollHeight;
+  }
 
-      ensureChatId();
-      const chat = chatHistory.find(c => c.id === currentChatId);
-      if (chat) {
-        chat.messages = [...currentMessages];
-        if (chat.title === "New chat" && role === "user") {
-          chat.title = text.slice(0, 40) + (text.length > 40 ? "…" : "");
-        }
-      }
-      renderHistory();
-    }
+  /* ---------- main send ---------- */
 
-    function renderHistory() {
-      historyListEl.innerHTML = "";
-      if (!chatHistory.length) {
-        historyListEl.appendChild(historyEmptyEl);
-        historyEmptyEl.style.display = "block";
-        return;
-      }
-      historyEmptyEl.style.display = "none";
+  async function sendMessage() {
+    const userMessage = inputEl.value.trim();
+    if (!userMessage) return;
 
-      chatHistory.forEach(chat => {
-        const item = document.createElement("div");
-        item.className = "history-item";
-        item.dataset.id = chat.id;
+    addMessage("user", userMessage);
+    inputEl.value = "";
+    typingRow.style.display = "flex";
 
-        const title = document.createElement("div");
-        title.className = "history-item-title";
-        title.textContent = chat.title || "Untitled chat";
-
-        const meta = document.createElement("div");
-        meta.className = "history-item-meta";
-        const timeSpan = document.createElement("span");
-        timeSpan.textContent = chat.createdAt || "";
-        const countSpan = document.createElement("span");
-        countSpan.textContent = (chat.messages?.length || 0) + " msgs";
-
-        meta.appendChild(timeSpan);
-        meta.appendChild(countSpan);
-
-        item.appendChild(title);
-        item.appendChild(meta);
-
-        item.addEventListener("click", () => {
-          loadChat(chat.id);
-        });
-
-        historyListEl.appendChild(item);
-      });
-    }
-
-    function loadChat(id) {
-      const chat = chatHistory.find(c => c.id === id);
-      if (!chat) return;
-
-      currentChatId = chat.id;
-      currentMessages = [...(chat.messages || [])];
-
-      chatScrollEl.innerHTML = "";
-      if (!currentMessages.length) {
-        chatScrollEl.appendChild(chatEmptyEl);
-        chatEmptyEl.style.display = "flex";
-        return;
-      }
-
-      currentMessages.forEach(msg => {
-        const row = document.createElement("div");
-        row.className = "msg-row " + msg.role;
-
-        const bubble = document.createElement("div");
-        bubble.className = "msg-bubble " + msg.role;
-        bubble.textContent = msg.content;
-
-        const meta = document.createElement("div");
-        meta.className = "msg-meta";
-        meta.textContent = msg.role === "user" ? "You" : "StudyMate";
-
-        bubble.appendChild(meta);
-        row.appendChild(bubble);
-        chatScrollEl.appendChild(row);
+    try {
+      const response = await fetch(BACKEND_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: currentMessages.map(m => ({
+            role: m.role,
+            content: m.content
+          }))
+        })
       });
 
-      chatScrollEl.scrollTop = chatScrollEl.scrollHeight;
+      if (!response.ok) {
+        throw new Error("HTTP " + response.status);
+      }
+
+      const data = await response.json();
+      typingRow.style.display = "none";
+
+      addTypingMessage(data.reply || "Hmm, I didn't get a reply from the model.");
+    } catch (err) {
+      console.error(err);
+      typingRow.style.display = "none";
+      addTypingMessage("Server error. Check backend logs or try again.");
+      setStatus(false);
+      setTimeout(() => setStatus(true), 2500);
     }
+  }
 
-async function sendMessage() {
-  const userMessage = inputEl.value.trim();
-  if (!userMessage) return;
+  /* ---------- file extractor ---------- */
 
-  addMessage("user", userMessage);
-  inputEl.value = "";
-  typingRow.style.display = "flex";
+  function updateFileLabel(files) {
+    if (files.length === 0) {
+      fileLabel.textContent = "Upload notes / slides";
+    } else if (files.length === 1) {
+      fileLabel.textContent = `1 file selected: ${files[0].name}`;
+    } else {
+      fileLabel.textContent = `${files.length} files selected`;
+    }
+  }
 
-  try {
+  async function extractFile(file) {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const res = await fetch("https://studymate-extractor.onrender.com/extract", {
+      method: "POST",
+      body: formData
+    });
+
+    const data = await res.json();
+    return data.text;
+  }
+
+  async function sendMessageFromText(text) {
+    addMessage("user", text);
+    typingRow.style.display = "flex";
+
     const response = await fetch(BACKEND_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        messages: currentMessages.map(m => ({
-          role: m.role,
-          content: m.content
-        }))
+        messages: [...currentMessages, { role: "user", content: text }]
       })
     });
-
-    if (!response.ok) {
-      throw new Error("HTTP " + response.status);
-    }
 
     const data = await response.json();
     typingRow.style.display = "none";
 
-    if (data.reply) {
-      addMessage("ai", data.reply);
-    } else {
-      addMessage("ai", "Hmm, I didn’t get a reply from the model.");
+    addTypingMessage(data.reply || "Hmm, I didn't get a reply from the model.");
+  }
+
+  document.getElementById("file-input").addEventListener("change", async (e) => {
+    const files = Array.from(e.target.files);
+    if (files.length === 0) return;
+
+    updateFileLabel(files);
+
+    let combinedText = "";
+
+    for (const file of files) {
+      const extracted = await extractFile(file);
+      combinedText += `\n\n--- Extracted from: ${file.name} ---\n${extracted}`;
     }
-  } catch (err) {
-    console.error(err);
-    typingRow.style.display = "none";
-    addMessage("ai", "Server error. Check backend logs or try again.");
-    setStatus(false);
-    setTimeout(() => setStatus(true), 2500);
-  }
-}
 
-
-
-function updateFileLabel(files) {
-  const label = document.getElementById("file-label");
-
-  if (files.length === 0) {
-    label.textContent = "Upload notes / slides";
-  } else if (files.length === 1) {
-    label.textContent = `1 file selected: ${files[0].name}`;
-  } else {
-    label.textContent = `${files.length} files selected`;
-  }
-}
-
-async function extractFile(file) {
-  const formData = new FormData();
-  formData.append("file", file);
-
-  const res = await fetch("https://studymate-extractor.onrender.com/extract", {
-    method: "POST",
-    body: formData
+    sendMessageFromText(combinedText.trim());
   });
 
-  const data = await res.json();
-  return data.text;
-}
+  /* ---------- events & init ---------- */
 
-async function sendMessageFromText(text) {
-  addMessage("user", text);
-  typingRow.style.display = "flex";
+  function attachEvents() {
+    sendBtn.addEventListener("click", sendMessage);
 
-  const response = await fetch(BACKEND_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      messages: [...currentMessages, { role: "user", content: text }]
-    })
-  });
+    inputEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
 
-  const data = await response.json();
-  typingRow.style.display = "none";
+    clearBtn.addEventListener("click", () => {
+      clearChatUI();
+    });
 
-  addMessage("ai", data.reply || "Hmm, I didn’t get a reply from the model.");
-}
+    newChatBtn.addEventListener("click", () => {
+      clearChatUI();
+    });
 
-document.getElementById("file-input").addEventListener("change", async (e) => {
-  const files = Array.from(e.target.files);
-  if (files.length === 0) return;
-
-  updateFileLabel(files);
-
-  let combinedText = "";
-
-  for (const file of files) {
-    const extracted = await extractFile(file);
-    combinedText += `\n\n--- Extracted from: ${file.name} ---\n${extracted}`;
-  }
-
-  sendMessageFromText(combinedText.trim());
-});
-
-
-
-    function attachEvents() {
-      sendBtn.addEventListener("click", sendMessage);
-      inputEl.addEventListener("keydown", (e) => {
-        if (e.key === "Enter" && !e.shiftKey) {
-          e.preventDefault();
-          sendMessage();
-        }
+    document.querySelectorAll(".chat-empty-chip").forEach(chip => {
+      chip.addEventListener("click", () => {
+        inputEl.value = chip.textContent;
+        inputEl.focus();
       });
+    });
 
-      clearBtn.addEventListener("click", () => {
-        clearChatUI();
-      });
-
-      newChatBtn.addEventListener("click", () => {
-        clearChatUI();
-      });
-
-      fileInput.addEventListener("change", handleFileChange);
-
-      document.querySelectorAll(".chat-empty-chip").forEach(chip => {
+    if (quickPromptsEl) {
+      quickPromptsEl.querySelectorAll(".chip").forEach(chip => {
         chip.addEventListener("click", () => {
           inputEl.value = chip.textContent;
           inputEl.focus();
         });
       });
-
-      if (quickPromptsEl) {
-        quickPromptsEl.querySelectorAll(".chip").forEach(chip => {
-          chip.addEventListener("click", () => {
-            inputEl.value = chip.textContent;
-            inputEl.focus();
-          });
-        });
-      }
-
-      document.getElementById("clear-history-btn").addEventListener("click", () => {
-        chatHistory = [];
-        currentChatId = null;
-        renderHistory();
-      });
     }
 
-    function init() {
-      setStatus(true);
-      updateStats();
-      attachEvents();
-    }
+    document.getElementById("clear-history-btn").addEventListener("click", () => {
+      chatHistory = [];
+      currentChatId = null;
+      renderHistory();
+    });
+  }
 
-    init();
-  </script>
+  function init() {
+    setStatus(true);
+    updateStats();
+    attachEvents();
+  }
+
+  init();
+</script>
+
 </body>
 </html>

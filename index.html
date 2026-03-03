@@ -820,7 +820,7 @@
           <label class="file-pill">
             <span class="icon">📎</span>
             <span id="file-label">Upload notes / slides</span>
-            <input id="file-input" type="file" class="hidden-input" />
+            <input id="file-input" type="file" class="hidden-input"multiple />
           </label>
           <button class="btn-ghost" id="new-chat-btn">New chat</button>
           <div class="status-pill">
@@ -1106,7 +1106,19 @@ async function sendMessage() {
   }
 }
 
-/* ---------------- FILE EXTRACTOR SUPPORT ---------------- */
+
+
+function updateFileLabel(files) {
+  const label = document.getElementById("file-label");
+
+  if (files.length === 0) {
+    label.textContent = "Upload notes / slides";
+  } else if (files.length === 1) {
+    label.textContent = `1 file selected: ${files[0].name}`;
+  } else {
+    label.textContent = `${files.length} files selected`;
+  }
+}
 
 async function extractFile(file) {
   const formData = new FormData();
@@ -1140,12 +1152,21 @@ async function sendMessageFromText(text) {
 }
 
 document.getElementById("file-input").addEventListener("change", async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
+  const files = Array.from(e.target.files);
+  if (files.length === 0) return;
 
-  const extractedText = await extractFile(file);
-  sendMessageFromText(extractedText);
+  updateFileLabel(files);
+
+  let combinedText = "";
+
+  for (const file of files) {
+    const extracted = await extractFile(file);
+    combinedText += `\n\n--- Extracted from: ${file.name} ---\n${extracted}`;
+  }
+
+  sendMessageFromText(combinedText.trim());
 });
+
 
 
     function attachEvents() {

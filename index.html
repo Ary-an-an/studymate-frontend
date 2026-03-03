@@ -910,263 +910,69 @@
   </div>
 
   <script>
-    const BACKEND_URL = "https://studymate-backend-7bkx.onrender.com"; // replace after backend deploy
+  const BACKEND_URL = "https://studymate-backend-7bkx.onrender.com/chat";
 
-    const chatScrollEl = document.getElementById("chat-scroll");
-    const inputEl = document.getElementById("input");
-    const sendBtn = document.getElementById("send-btn");
-    const clearBtn = document.getElementById("clear-btn");
-    const typingRow = document.getElementById("typing-row");
-    const statusDot = document.getElementById("status-dot");
-    const statusLabel = document.getElementById("status-label");
-    const historyList = document.getElementById("history-list");
-    const historyEmpty = document.getElementById("history-empty");
-    const errorBanner = document.getElementById("error-banner");
-    const errorText = document.getElementById("error-text");
-    const errorDismiss = document.getElementById("error-dismiss");
-    const quickPrompts = document.getElementById("quick-prompts");
+  const chatScrollEl = document.getElementById("chat-scroll");
+  const inputEl = document.getElementById("input");
+  const sendBtn = document.getElementById("send-btn");
+  const clearBtn = document.getElementById("clear-btn");
+  const typingRow = document.getElementById("typing-row");
+  const statusDot = document.getElementById("status-dot");
+  const statusLabel = document.getElementById("status-label");
 
-    let messages = [];
-    let sessions = [];
-    let currentSessionId = null;
-    let isSending = false;
+  function addMessage(role, text) {
+    const msg = document.createElement("div");
+    msg.className = role === "user" ? "msg user" : "msg ai";
+    msg.innerText = text;
+    chatScrollEl.appendChild(msg);
+    chatScrollEl.scrollTop = chatScrollEl.scrollHeight;
+  }
 
-    function nowTime() {
-      const d = new Date();
-      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    }
+  async function sendMessage() {
+    const userMessage = inputEl.value.trim();
+    if (!userMessage) return;
 
-    function createSessionId() {
-      return "s-" + Date.now().toString(36);
-    }
+    addMessage("user", userMessage);
+    inputEl.value = "";
 
-    function ensureSession() {
-      if (!currentSessionId) {
-        currentSessionId = createSessionId();
-      }
-    }
+    typingRow.style.display = "flex";
 
-    function renderMessages() {
-      chatScrollEl.innerHTML = "";
-      messages.forEach(msg => {
-        const row = document.createElement("div");
-        row.className = "msg-row " + msg.role;
-
-        const meta = document.createElement("div");
-        meta.className = "msg-meta";
-        meta.textContent = msg.role === "user" ? "You" : "StudyMate";
-
-        const bubble = document.createElement("div");
-        bubble.className = "msg-bubble";
-        bubble.textContent = msg.content;
-
-        const time = document.createElement("div");
-        time.className = "msg-time";
-        time.textContent = msg.time || nowTime();
-
-        row.appendChild(meta);
-        row.appendChild(bubble);
-        row.appendChild(time);
-
-        chatScrollEl.appendChild(row);
+    try {
+      const response = await fetch(BACKEND_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: [
+            { role: "user", content: userMessage }
+          ]
+        })
       });
 
-      chatScrollEl.scrollTop = chatScrollEl.scrollHeight;
-    }
+      const data = await response.json();
+      typingRow.style.display = "none";
 
-    function setTyping(visible) {
-      typingRow.style.display = visible ? "block" : "none";
-      if (visible) {
-        chatScrollEl.scrollTop = chatScrollEl.scrollHeight;
-      }
-    }
-
-    function setStatus(online) {
-      if (online) {
-        statusDot.classList.remove("offline");
-        statusLabel.textContent = "Connected";
+      if (data.reply) {
+        addMessage("ai", data.reply);
       } else {
-        statusDot.classList.add("offline");
-        statusLabel.textContent = "Offline";
-      }
-    }
-
-    function showError(msg) {
-      errorText.textContent = msg;
-      errorBanner.style.display = "flex";
-    }
-
-    function hideError() {
-      errorBanner.style.display = "none";
-    }
-
-    function saveSessionSnapshot() {
-      if (!currentSessionId || messages.length === 0) return;
-
-      const titleSource = messages.find(m => m.role === "user");
-      const title = titleSource ? titleSource.content.slice(0, 60) : "Untitled session";
-
-      const snapshot = {
-        id: currentSessionId,
-        title,
-        time: nowTime(),
-        count: messages.length,
-        messages: JSON.parse(JSON.stringify(messages))
-      };
-
-      const existingIndex = sessions.findIndex(s => s.id === currentSessionId);
-      if (existingIndex >= 0) {
-        sessions[existingIndex] = snapshot;
-      } else {
-        sessions.unshift(snapshot);
+        addMessage("ai", "Something went wrong.");
       }
 
-      sessions = sessions.slice(0, 12);
-      renderHistory();
+    } catch (err) {
+      typingRow.style.display = "none";
+      addMessage("ai", "Server error.");
+      console.error(err);
     }
+  }
 
-    function renderHistory() {
-      historyList.innerHTML = "";
-      if (sessions.length === 0) {
-        historyEmpty.style.display = "block";
-        return;
-      }
-      historyEmpty.style.display = "none";
+  sendBtn.addEventListener("click", sendMessage);
 
-      sessions.forEach(session => {
-        const item = document.createElement("div");
-        item.className = "history-item";
-        item.dataset.id = session.id;
+  inputEl.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") sendMessage();
+  });
 
-        const title = document.createElement("div");
-        title.className = "history-title";
-        title.textContent = session.title;
-
-        const meta = document.createElement("div");
-        meta.className = "history-meta";
-        const left = document.createElement("span");
-        left.textContent = session.time;
-        const right = document.createElement("span");
-        right.textContent = session.count + " msgs";
-        meta.appendChild(left);
-        meta.appendChild(right);
-
-        item.appendChild(title);
-        item.appendChild(meta);
-
-        item.addEventListener("click", () => {
-          currentSessionId = session.id;
-          messages = JSON.parse(JSON.stringify(session.messages));
-          renderMessages();
-        });
-
-        historyList.appendChild(item);
-      });
-    }
-
-    function addMessage(role, content) {
-      messages.push({
-        role,
-        content,
-        time: nowTime()
-      });
-      renderMessages();
-      saveSessionSnapshot();
-    }
-
-    async function sendMessage(text) {
-      if (!text || isSending) return;
-      hideError();
-      ensureSession();
-
-      addMessage("user", text);
-      isSending = true;
-      sendBtn.disabled = true;
-      setTyping(true);
-
-      try {
-        const historyPayload = messages
-          .slice(0, -1)
-          .map(m => ({ role: m.role === "user" ? "user" : "assistant", content: m.content }));
-
-        const res = await fetch(`${BACKEND_URL}/chat`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            message: text,
-            history: historyPayload
-          })
-        });
-
-        if (!res.ok) {
-          setStatus(false);
-          const body = await res.text();
-          console.error("Backend error:", res.status, body);
-          addMessage("bot", "There was an error talking to the AI backend.");
-          showError("Backend error (" + res.status + "). Check your Render URL and logs.");
-          return;
-        }
-
-        setStatus(true);
-        const data = await res.json();
-        addMessage("bot", data.reply || "(no reply)");
-      } catch (err) {
-        console.error(err);
-        setStatus(false);
-        addMessage("bot", "Network error talking to backend.");
-        showError("Network error. Check if your backend is awake on Render.");
-      } finally {
-        isSending = false;
-        sendBtn.disabled = false;
-        setTyping(false);
-      }
-    }
-
-    function handleSendClick() {
-      const text = inputEl.value.trim();
-      if (!text) return;
-      inputEl.value = "";
-      inputEl.focus();
-      sendMessage(text);
-    }
-
-    function handleKeyDown(e) {
-      if (e.key === "Enter" && !e.shiftKey) {
-        e.preventDefault();
-        handleSendClick();
-      }
-    }
-
-    function clearChat() {
-      messages = [];
-      currentSessionId = null;
-      renderMessages();
-      saveSessionSnapshot();
-    }
-
-    function initQuickPrompts() {
-      if (!quickPrompts) return;
-      quickPrompts.querySelectorAll(".pill-large").forEach(el => {
-        const prompt = el.getAttribute("data-prompt");
-        if (!prompt) return;
-        el.addEventListener("click", () => {
-          inputEl.value = prompt;
-          inputEl.focus();
-        });
-      });
-    }
-
-    function init() {
-      addMessage("bot", "Hi, I’m StudyMate. Ask me anything about your studies and I’ll keep it short and clear.");
-      inputEl.addEventListener("keydown", handleKeyDown);
-      sendBtn.addEventListener("click", handleSendClick);
-      clearBtn.addEventListener("click", clearChat);
-      errorDismiss.addEventListener("click", hideError);
-      initQuickPrompts();
-      setStatus(true);
-    }
-
-    init();
-  </script>
+  clearBtn.addEventListener("click", () => {
+    chatScrollEl.innerHTML = "";
+  });
+</script>
 </body>
 </html>

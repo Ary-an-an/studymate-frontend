@@ -1065,56 +1065,88 @@
       chatScrollEl.scrollTop = chatScrollEl.scrollHeight;
     }
 
-    async function sendMessage() {
-      const userMessage = inputEl.value.trim();
-      if (!userMessage) return;
+async function sendMessage() {
+  const userMessage = inputEl.value.trim();
+  if (!userMessage) return;
 
-      addMessage("user", userMessage);
-      inputEl.value = "";
-      typingRow.style.display = "flex";
+  addMessage("user", userMessage);
+  inputEl.value = "";
+  typingRow.style.display = "flex";
 
-      try {
-        const response = await fetch(BACKEND_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            messages: currentMessages.map(m => ({
-              role: m.role,
-              content: m.content
-            }))
-          })
-        });
+  try {
+    const response = await fetch(BACKEND_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: currentMessages.map(m => ({
+          role: m.role,
+          content: m.content
+        }))
+      })
+    });
 
-        if (!response.ok) {
-          throw new Error("HTTP " + response.status);
-        }
-
-        const data = await response.json();
-        typingRow.style.display = "none";
-
-        if (data.reply) {
-          addMessage("ai", data.reply);
-        } else {
-          addMessage("ai", "Hmm, I didn’t get a reply from the model.");
-        }
-      } catch (err) {
-        console.error(err);
-        typingRow.style.display = "none";
-        addMessage("ai", "Server error. Check backend logs or try again.");
-        setStatus(false);
-        setTimeout(() => setStatus(true), 2500);
-      }
+    if (!response.ok) {
+      throw new Error("HTTP " + response.status);
     }
 
-    function handleFileChange(e) {
-      const file = e.target.files[0];
-      if (!file) {
-        fileLabel.textContent = "Upload notes / slides";
-        return;
-      }
-      fileLabel.textContent = file.name;
-      addMessage("user", `I’ve uploaded a file: ${file.name}. Help me study from it.`);
+    const data = await response.json();
+    typingRow.style.display = "none";
+
+    if (data.reply) {
+      addMessage("ai", data.reply);
+    } else {
+      addMessage("ai", "Hmm, I didn’t get a reply from the model.");
     }
+  } catch (err) {
+    console.error(err);
+    typingRow.style.display = "none";
+    addMessage("ai", "Server error. Check backend logs or try again.");
+    setStatus(false);
+    setTimeout(() => setStatus(true), 2500);
+  }
+}
+
+/* ---------------- FILE EXTRACTOR SUPPORT ---------------- */
+
+async function extractFile(file) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const res = await fetch("https://studymate-extractor.onrender.com/extract", {
+    method: "POST",
+    body: formData
+  });
+
+  const data = await res.json();
+  return data.text;
+}
+
+async function sendMessageFromText(text) {
+  addMessage("user", text);
+  typingRow.style.display = "flex";
+
+  const response = await fetch(BACKEND_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      messages: [...currentMessages, { role: "user", content: text }]
+    })
+  });
+
+  const data = await response.json();
+  typingRow.style.display = "none";
+
+  addMessage("ai", data.reply || "Hmm, I didn’t get a reply from the model.");
+}
+
+document.getElementById("file-input").addEventListener("change", async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const extractedText = await extractFile(file);
+  sendMessageFromText(extractedText);
+});
+
 
     function attachEvents() {
       sendBtn.addEventListener("click", sendMessage);
